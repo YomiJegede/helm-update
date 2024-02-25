@@ -1,0 +1,228 @@
+stages:
+  - Sysdig-helm_chart_update
+
+variables:
+  KUBERNETES_VERSION: 1.24.11
+
+eks-infra-global: 
+  image: alpine:latest
+  stage: Sysdig-helm_chart_update
+  variables:
+    account: 937266576074
+    region: us-east-1
+    cluster: eks-infra-global
+  environment:
+    name: infra
+  tags:
+    - infra-global-devops-podrunner
+  script:
+  - echo "START"
+  - install_dependencies
+  - sysdig_helm_chart
+
+#eks-be-prod:
+  #image: alpine:latest
+  #stage: Sysdig-helm_chart_update
+  #variables:
+    #account: 534387255393
+    #region: us-east-1
+    #cluster: eks-be-prod
+  #environment:
+    #name: be-prod
+  #tags:
+    #- infra-global-devops-podrunner
+  #script:
+  #- echo "START"
+  #- install_dependencies
+  #- sysdig_helm_chart
+
+#eks-fe-prod:
+  #image: alpine:latest
+  #stage: Sysdig-helm_chart_update
+  #variables:
+    #account: 534387255393
+    #region: us-east-1
+    #cluster: eks-fe-prod
+  #environment:
+    #name: fe-prod
+  #tags:
+    #- infra-global-devops-podrunner
+  #script:
+  #- echo "START"
+  #- install_dependencies
+  #- sysdig_helm_chart
+
+#eks-be-preprod:
+  #image: alpine:latest
+  #stage: Sysdig-helm_chart_update
+  #variables:
+   # account: 419970853419
+   # region: us-east-1
+   # cluster: eks-be-preprod
+  #environment:
+   # name: be-preprod
+  #tags:
+   # - infra-global-devops-podrunner
+  #script:
+  #- echo "START"
+  #- install_dependencies
+  #- sysdig_helm_chart
+
+preproduse2:
+  image: alpine:latest
+  stage: Sysdig-helm_chart_update
+  variables:
+    account: 768642571436
+    region: us-east-2
+    cluster: preproduse2
+  environment:
+    name: preproduse2
+  tags:
+    - infra-global-devops-podrunner
+  script:
+  - echo "START"
+  - install_dependencies
+  - sysdig_helm_chart
+
+#eks-fe-preprod:
+ # image: alpine:latest
+ # stage: Sysdig-helm_chart_update
+ # variables:
+  #  account: 419970853419
+  #  region: us-east-1
+  #  cluster: eks-fe-preprod
+  #environment:
+  #  name: fe-preprod
+  #tags:
+  #  - infra-global-devops-podrunner
+  #script:
+  #- echo "START"
+  #- install_dependencies
+  #- sysdig_helm_chart
+
+#k8s-preprod-use2:
+ # image: alpine:latest
+ # stage: Sysdig-helm_chart_update
+ # variables:
+ #   account: 419970853419
+ #   region: us-east-2
+ #   cluster: k8s-preprod-use2
+ # environment:
+ #   name: k8s-preprod-use2
+ # tags:
+ #   - infra-global-devops-podrunner
+ # script:
+ # - echo "START"
+ # - install_dependencies
+ # - abc
+
+eks-be-use2:
+  image: alpine:latest
+  stage: Sysdig-helm_chart_update
+  variables:
+    account: 534387255393
+    region: us-east-2
+    cluster: eks-be-use2
+  environment:
+    name: be-use2
+  tags:
+    - infra-global-devops-podrunner
+  script:
+  - echo "START"
+  - install_dependencies
+  - sysdig_helm_chart
+
+eks-fe-use2:
+  image: alpine:latest
+  stage: Sysdig-helm_chart_update
+  variables:
+    account: 534387255393
+    region: us-east-2
+    cluster: eks-fe-use2
+  environment:
+    name: fe-use2
+  tags:
+    - infra-global-devops-podrunner
+  script:
+  - echo "START"
+  - install_dependencies
+  - sysdig_helm_chart
+
+###############AUTO-DEVOPS FUNCTIONS###############
+.auto_devops: &auto_devops |
+
+
+  function install_dependencies() {
+    apk add -U curl tar gzip bash 
+   
+    wget https://get.helm.sh/helm-v3.9.2-linux-amd64.tar.gz
+    tar -zxvf helm-v3.9.2-linux-amd64.tar.gz
+    mv linux-amd64/helm /usr/local/bin/helm
+    helm version --client
+
+    curl -L -o /usr/bin/kubectl "https://storage.googleapis.com/kubernetes-release/release/v${KUBERNETES_VERSION}/bin/linux/amd64/kubectl"
+    chmod +x /usr/bin/kubectl
+    kubectl version --client
+  }
+
+  function abc(){
+    #DELETE BETWEEN !!!!
+    if [ $cluster == "k8s-preprod-use2" ]; then
+      echo "BEGIN!!!!!"
+      kubectl config use-context "$KUBE_CONTEXT"
+      kubectl -n kube-system get cm aws-auth -o yaml > temp.awsauth
+      cat temp.awsauth
+      sed -i 's/AdministratorAccess_cd4172d2eedc6463/AWSAdministratorAccess_0348aa05998279ab/g' temp.awsauth
+      kubectl -n kube-system apply -f temp.awsauth
+      
+    fi
+    #!!!!
+  }
+
+  function sysdig_helm_chart() {
+    kubectl config use-context "$KUBE_CONTEXT"
+    helm repo add sysdig https://charts.sysdig.com/
+    helm repo update
+    #list current helm installation
+    helm ls -n sysdig-agent
+    #get current version
+    export CURRENT_VERSION=$(helm -n sysdig-agent ls | awk 'FNR == 2 {print $9}' | sed 's/[^0-9.]*//g')
+    #get latest version of chart
+    export LATEST_VERSION=$(helm search repo sysdig-deploy | awk 'FNR == 2 {print $2}' | sed 's/[^0-9.]*//g')
+    #determine if latest version is newer than installed version
+    #sort versions lowest to highest
+    if [[ "$(echo $CURRENT_VERSION)" == "$(echo $LATEST_VERSION)" ]]; then 
+      echo -e "Current version is latest. \nCurrent version - $CURRENT_VERSION\nLatest version - $LATEST_VERSION\nExiting"      
+    else
+      echo -e "Newer version available. \nCurrent version - $CURRENT_VERSION\nLatest version - $LATEST_VERSION\nUpdating to latest version\n"
+      helm -n sysdig-agent upgrade sysdig-agent sysdig/sysdig-deploy --reuse-values
+
+      echo "New installed version - $(helm -n sysdig-agent ls | awk 'FNR == 2 {print $9}' | sed 's/[^0-9.]*//g')"
+      #check to make sure pods start successfully, otherwise rollback
+      echo "Checking for deployment issues..."
+      sleep 300
+      #only check node analyzer, as other pods may be running but 0/1 due to license limitations, and not a failed upgrade
+      export output=$(kubectl -n sysdig-agent wait pod --for=condition=ready -l app.kubernetes.io/name=nodeanalyzer --timeout=120s --output=name 2> errors.txt)
+      echo "Failed pod starts -"
+      cat errors.txt
+      echo "Successful pod starts -"
+      echo $output
+      if [[ $(cat errors.txt | grep -c error) == "1" ]]; then
+        echo -e "\n!!!!!!!!!!!!!!!!!!!!!!!!!\nError detected in one of the node analyzer pods, rolling back to previous version\n!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+        kubectl -n sysdig-agent get pods
+        helm -n sysdig-agent rollback sysdig-agent
+        sleep 60
+        helm ls -n sysdig-agent
+        curl -X POST -H 'Content-type: application/json' --data "{'text':\"Sysdig helm chart auto-updated FAILED!\nCluster: \`${cluster}\`\nCurrent Version: \`${CURRENT_VERSION}\`\nLatest Version: \`${LATEST_VERSION}\`\"}" https://hooks.slack.com/services/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
+      else
+        echo "Upgrade successful"
+        kubectl -n sysdig-agent get pods
+        curl -X POST -H 'Content-type: application/json' --data "{'text':\"Sysdig helm chart auto-updated SUCCESSFUL!\nCluster: \`${cluster}\`\nPrevious Version: \`${CURRENT_VERSION}\`\nNew Version: \`${LATEST_VERSION}\`\"}" https://hooks.slack.com/services/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
+      fi
+    fi
+  }
+  
+before_script:
+  - *auto_devops
+
+
